@@ -1,10 +1,9 @@
 name: Node Matrix Engine
 
 on:
+  repository_dispatch:
+    types: [run-task]
   workflow_dispatch:
-  schedule:
-    - cron: '0 * * * *'
-
 concurrency:
   group: cluster-pool-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
